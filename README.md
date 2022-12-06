@@ -1,1 +1,1 @@
-# Futoshiki-AI
+# Futoshiki-Solver
