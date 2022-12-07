@@ -1,4 +1,6 @@
 import os
+import copy
+import time
 
 INPUT_PATH = "inputs/"    # Path of input text files
 OUTPUT_PATH = "outputs/"  # Path of output text files
@@ -20,88 +22,68 @@ class Futoshiki:
             for c in range(GRID_N):
                 if self.state[r][c] == 0:
                     self.domains[(r,c)] = list(range(1, GRID_N+1))
-        
-        self.update_domain()
+        #self.update_domain()
 
-    # Just to update the domain values.
-    # Don't care about satisfying constraints,
-    # which should be handled in different function.
-    def update_domain(self):
+    def check_consistent(self, coord, value):
+        (r,c) = coord
+
         # Non-repeating values in a row or column
-        needs_update = []
-        for i in range(self.grid_size):
-            for j in range(self.grid_size):
-                if self.state[i][j] != 0:
-                    needs_update.append((i, j, self.state[i][j]))
+        for j in range(self.grid_size):
+            if (self.state[r][j] == value and j != c) or (self.state[j][c] == value and j != r):
+                return False
 
-        # Update horizontal domains
-        for (r, _, val) in needs_update:
-            for j in range(0, self.grid_size):
-                if (r,j) in self.domains.keys() and val in self.domains[(r,j)]:
-                    self.domains[(r,j)].remove(val)
-
-        # Update vertical domains
-        for (_, c, val) in needs_update:
-            for i in range(0, self.grid_size):
-                if (i,c) in self.domains.keys() and val in self.domains[(i,c)]:
-                    self.domains[(i,c)].remove(val)
-        
         # Horizontal Constraints
-        for i in range(self.grid_size):
-            for j in range(self.grid_size-1):
-                if (i,j) in self.hrz_con.keys():
-                    constraint = self.hrz_con[(i,j)]
-                    left = self.state[i][j]
-                    right = self.state[i][j+1]
+        left  = (r, c-1)
+        right = (r, c+1)
+        if (r,c) in self.hrz_con.keys():
+            constraint = self.hrz_con[(r,c)]
+            if left != 0 and right != 0:
+                if self.state[r][c+1] != 0:
+                    if constraint == '>' and value <= self.state[r][c+1]:
+                        return False
+                    if constraint == '<' and value >= self.state[r][c+1]:
+                        return False
+            
+        if (r, c-1) in self.hrz_con.keys():
+            constraint = self.hrz_con[(r,c-1)]
+            if left != 0 and right != 0:
+                if self.state[r][c-1] != 0:
+                    if constraint == '>' and value >= self.state[r][c-1]:
+                        return False
+                    if constraint == '<' and value <= self.state[r][c-1]:
+                        return False
 
-                    if (left == 0) ^ (right == 0):
-                        if constraint == '>':
-                            if left == 0:
-                                self.domains[(i,j)] = list(filter(lambda x: x > right, self.domains[(i,j)]))
-                            else:
-                                self.domains[(i,j+1)] = list(filter(lambda x: x < left, self.domains[(i,j+1)]))
-                        if constraint == '<':
-                            if left == 0:
-                                self.domains[(i,j)] = list(filter(lambda x: x < right, self.domains[(i,j)]))
-                            else:
-                                self.domains[(i,j+1)] = list(filter(lambda x: x > left, self.domains[(i,j+1)]))
-                    elif left == 0 and right == 0:
-                        if constraint == '>':
-                            min_right = min(self.domains[(i,j+1)])
-                            self.domains[(i,j)] = list(filter(lambda x: x > min_right, self.domains[(i,j)]))
-                        elif constraint == '<':
-                            min_left = min(self.domains[(i,j)])
-                            self.domains[(i,j+1)] = list(filter(lambda x: x > min_left, self.domains[(i,j+1)]))
-        
         # Vertical Constraints
-        for i in range(self.grid_size-1):
-            for j in range(self.grid_size):
-                if (i,j) in self.vrt_con.keys():
-                    constraint = self.vrt_con[(i,j)]
-                    up = self.state[i][j]
-                    down = self.state[i+1][j]
+        up   = (r-1, c)
+        down = (r+1, c)
 
-                    if (up == 0) ^ (down == 0):
-                        if constraint == '^':
-                            if up == 0:
-                                self.domains[(i,j)] = list(filter(lambda x: x < down, self.domains[(i,j)]))
-                            else:
-                                self.domains[(i+1,j)] = list(filter(lambda x: x > up, self.domains[(i+1,j)]))
-                        if constraint == 'v':
-                            if up == 0:
-                                self.domains[(i,j)] = list(filter(lambda x: x > down, self.domains[(i,j)]))
-                            else:
-                                self.domains[(i+1,j)] = list(filter(lambda x: x < up, self.domains[(i+1,j)]))
-                    elif up == 0 and down == 0:
-                        if constraint == '^':
-                            min_up = min(self.domains[(i,j)])
-                            self.domains[(i+1,j)] = list(filter(lambda x: x > min_up, self.domains[(i+1,j)]))
-                        elif constraint == 'v':
-                            min_down = min(self.domains[(i+1,j)])
-                            self.domains[(i,j)] = list(filter(lambda x: x > min_down, self.domains[(i,j)]))
+        if (r,c) in self.vrt_con.keys():
+            constraint = self.vrt_con[(r,c)]
+            if up != 0 and down != 0:
+                if self.state[r+1][c] != 0:
+                    if constraint == '^' and value >= self.state[r+1][c]:
+                        return False
+                    if constraint == 'v' and value <= self.state[r+1][c]:
+                        return False
+            
+        if (r-1, c) in self.vrt_con.keys():
+            constraint = self.vrt_con[(r-1,c)]
+            if up != 0 and down != 0:
+                if self.state[r-1][c] != 0:
+                    if constraint == '^' and value <= self.state[r-1][c]:
+                        return False
+                    if constraint == 'v' and value >= self.state[r-1][c]:
+                        return False
+
+        return True
 
     def complete(self):
-        return len(self.domains) == 0
+        for i in range(self.grid_size):
+            for j in range(self.grid_size):
+                if self.state[i][j] == 0:
+                    return False
+        
+        return True
 
     def select_unassigned_variable(self):
         suv_result = mrv(self.domains)
@@ -119,18 +101,10 @@ class Futoshiki:
 
         return self.domains[(r,c)]
 
-    # Given a coordinate (r,c), check if assigning it the value
-    # parameter will result in a legal board state.
-    # Return true / false
-    def check_consistent(self, coord, value):
-        # Check all different horizontal and vertical
+    def assign(self, coord, value):
         (r,c) = coord
-        for j in range(self.grid_size):
-            if (self.state[r][j] == value and j != c) or (self.state[j][c] == value and j != r):
-                return False
-        
-        # Check inequalities
-        return True
+        self.state[r][c] = value
+        del self.domains[(r,c)]
 
     def print_all(self):
         print("STATE:", self.state, "\n",)
@@ -158,27 +132,27 @@ def degree(state, point):
     # Return the total mumber along with the point
     return (value, (r,c))
 
-def solve_futoshiki(node:Futoshiki, assignment):
+def solve_futoshiki(node:Futoshiki) -> Futoshiki:
     if node.complete():
-        print("SOLVED!")
-        return True
+        return node
     
     coord = node.select_unassigned_variable()
-    
     for value in node.get_domain_values(coord):
         if node.check_consistent(coord, value):
-            # TODO: Append to assignment
-            # ...
+            child = copy.deepcopy(node)
+            child.assign(coord, value)
+            result = solve_futoshiki(child)
 
-            # TODO: Update state
-            # ...
+            if result:
+                return result
 
-            # TODO: Recurse ?
-            # ...
-            return True
+    return False
 
 def load_input():
     tests_dir = sorted([x for x in os.listdir(INPUT_PATH) if "Input" in x])
+
+    # Holds all the boards to solve
+    ftsk_boards = []
 
     for test in tests_dir:
         with open(INPUT_PATH + test, "r") as f:
@@ -211,9 +185,43 @@ def load_input():
                     if ln[j] in ['^','v']:
                         vertical_constraints[(i-2*GRID_N-2, j)] = ln[j]
 
-            return Futoshiki(initial_state, horizontal_constraints, vertical_constraints, GRID_N)
+            ftsk_boards.append((Futoshiki(initial_state, horizontal_constraints,
+                                vertical_constraints, GRID_N), test))
+   
+    return ftsk_boards
 
+def write_and_print_output(state, output_suffix):
+    with open(OUTPUT_PATH + "Output" + output_suffix, "w") as f:
+        N = len(state)
+
+        for i in range(N):
+            print(*state[i])
+            for j in range(N):
+                f.write(str(state[i][j]))
+                if j != N-1:
+                    f.write(' ')
+            
+            if i != N-1:
+                f.write('\n')
+
+def main():
+    ftsk_boards = load_input()
+
+    for (board, input_name) in ftsk_boards:
+        print("\n***************************************************")
+        print("Attempting to solve", input_name + "...")
+        start_time = time.time()
+        solution = solve_futoshiki(board)
+        end_time = time.time()
+        runtime = str(end_time - start_time)
+        print("***************************************************")
+        if not solution:
+            print("No solution was found. took", runtime + "s")
+        else:
+            print("A solution was found! took", runtime + "s\n")
+            output_suffix = input_name.split("Input")[1]
+            write_and_print_output(solution.state, output_suffix)
+            print("\nOutput written to", OUTPUT_PATH + "Output" + output_suffix)
 
 if __name__ == "__main__":
-    ftsk = load_input()
-    solve_futoshiki(ftsk, {})
+    main()
